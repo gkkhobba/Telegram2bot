@@ -1,0 +1,54 @@
+import requests
+from bs4 import BeautifulSoup
+import telegram
+import re
+from google.colab import files
+import PyPDF2
+
+# Set up the Telegram bot
+bot_token = 'Token Number’
+chat_id = 'chatID'
+bot = telegram.Bot(token=bot_token)
+
+# Loop through all 240 pages of the URL in reverse order
+for page_num in reversed(range(1, 60)):
+    url = f"https://website.com&page={page_num}"
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    rows = soup.select("table tr")[2:-2]  # select all rows starting from the third row and excluding the last two rows
+
+    captions = []
+    for row in reversed(rows):  # Iterate over rows in reverse order
+        cols = row.find_all('td')
+        link = cols[0].find('a')
+        if link:
+            order_number = link.text.strip()
+            order_link = "http://website.com " + link.get('href')
+            order_date = cols[1].text.strip()
+            department = cols[2].text.strip()
+            
+            # Check if cols has enough elements
+            subject = cols[3].text.strip() if len(cols) > 3 else ""
+
+            # Extract the filename from the PDF URL using regex
+            filename_match = re.search(r'[^/]+\.pdf$', order_link)
+            if filename_match:
+                filename = filename_match.group(0)
+        
+                # Add the PDF name, link, and size to the caption
+                caption = f"Circular NO: {order_number}\nCircular Subject: {subject}\nCircular Link: {order_link}\nCircular Date: {order_date}\nDepartment: {department}\n"
+
+                # Create the file object using requests
+                fileobj = requests.get(order_link)
+
+                # Save the PDF file
+                with open(filename, 'wb') as f:
+                    f.write(fileobj.content)
+
+                # Send the file with its caption
+                telegram_url = f'https://api.telegram.org/bot{bot_token}/sendDocument'
+                data = {'chat_id': chat_id, 'caption': caption}
+                files = {'document': (filename, open(filename, 'rb'))}
+                response = requests.post(telegram_url, data=data, files=files)
+                print(response.json())
